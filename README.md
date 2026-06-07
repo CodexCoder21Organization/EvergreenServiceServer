@@ -3,12 +3,16 @@
 A url:// service server that exposes a local **Evergreen Generator** as two model endpoints on the
 global P2P network:
 
-- **`url://evergreen-image-model/`** — an
+- **`url://evergreen-image-model/`** — an async
   [`ImageGenerationModel`](https://github.com/CodexCoder21Organization/PhotoGenerationManagerApi):
-  `generateImage(prompt, inputImages)` → an image (with embedded XMP/XML metadata).
-- **`url://evergreen-prompt-model/`** — a
+  `requestImageGeneration(prompt, inputImages)` → id, then `imageGenerationStatus(id)` → the image.
+- **`url://evergreen-prompt-model/`** — an async
   [`PromptGenerationModel`](https://github.com/CodexCoder21Organization/PhotoGenerationManagerApi):
-  `generatePrompt(prompt, inputImages)` → a new prompt string.
+  `requestPromptGeneration(prompt, inputImages)` → id, then `promptGenerationStatus(id)` → text.
+
+The models are **asynchronous** so every RPC is fast — the slow generation runs server-side, which is
+what lets a public consumer reach this NAT'd node through the relay (relays tolerate short RPCs, not
+long blocking ones).
 
 It hosts the
 [`EvergreenImageGenerationModel` / `EvergreenPromptGenerationModel`](https://github.com/CodexCoder21Organization/PhotoGenerationManagerEmbedded)

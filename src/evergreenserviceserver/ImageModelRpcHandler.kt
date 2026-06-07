@@ -1,19 +1,22 @@
 package evergreenserviceserver
 
 import foundation.url.protocol.Libp2pRpcProtocol
+import photogenerationmanager.api.GenerationState
 import photogenerationmanager.api.ImageGenerationModel
+import photogenerationmanager.api.ImageGenerationStatus
 import java.util.Base64
 
 /**
- * Routes `url://<image-domain>/` RPC calls to a backing [ImageGenerationModel] (the Embedded).
+ * Routes `url://<image-domain>/` RPC calls to a backing async [ImageGenerationModel] (the Embedded).
  *
- * RPC methods:
- *   generateImage      -> {imageHex, contentType, url}
- *   health             -> {status: "OK"}
- *   __bytecode_request -> {jar, className, stdlibJar} for SJVM client execution
+ * RPC methods (all fast, so they work over a relay):
+ *   requestImageGeneration -> {generationId}
+ *   imageGenerationStatus  -> {state, [imageHex, contentType, url] | [error]}
+ *   health                 -> {status: "OK"}
+ *   __bytecode_request     -> {jar, className, stdlibJar}
  *
- * Image bytes are carried as a hex string (`imageHex`); input images arrive as comma-separated hex
- * in the `images` parameter — see [ModelRpcSupport].
+ * The image bytes only travel on the DONE status (as a hex string); input images arrive as
+ * comma-separated hex in the `images` parameter — see [ModelRpcSupport].
  */
 class ImageModelRpcHandler(
     private val model: ImageGenerationModel,
@@ -27,7 +30,6 @@ class ImageModelRpcHandler(
             Libp2pRpcProtocol.RpcResponse.success(request.id, dispatch(request.method, request.params))
         } catch (e: Exception) {
             System.err.println("[EvergreenServiceServer/image] Error handling '${request.method}': ${e.message}")
-            e.printStackTrace()
             Libp2pRpcProtocol.RpcResponse.error(request.id, "-1", e.message ?: "Unknown error")
         }
     }
@@ -44,25 +46,32 @@ class ImageModelRpcHandler(
                 "stdlibJar" to Base64.getEncoder().encodeToString(stdlibJarBytes)
             )
 
-            "generateImage" -> {
+            "requestImageGeneration" -> {
                 val prompt = requireParam(params, "prompt")
                 val inputImages = parseHexImageList(params["images"])
-                val image = model.generateImage(prompt, inputImages)
-                mapOf(
-                    "imageHex" to bytesToHex(image.imageBytes),
-                    "contentType" to image.contentType,
-                    "url" to image.url
-                )
+                mapOf("generationId" to model.requestImageGeneration(prompt, inputImages))
             }
+
+            "imageGenerationStatus" -> statusToMap(model.imageGenerationStatus(requireParam(params, "generationId")))
 
             else -> mapOf(
                 "service" to "ImageGenerationModel",
                 "type" to "rpc",
                 "availableMethods" to listOf(
-                    "generateImage(prompt, images?): returns {imageHex, contentType, url}",
+                    "requestImageGeneration(prompt, images?): returns {generationId}",
+                    "imageGenerationStatus(generationId): returns {state, imageHex|error}",
                     "health(): returns {status: \"OK\"}"
                 )
             )
         }
+    }
+
+    private fun statusToMap(s: ImageGenerationStatus): Map<String, Any> = when (s.state) {
+        GenerationState.DONE -> {
+            val image = s.image!!
+            mapOf("state" to "DONE", "imageHex" to bytesToHex(image.imageBytes), "contentType" to image.contentType, "url" to image.url)
+        }
+        GenerationState.ERROR -> mapOf("state" to "ERROR", "error" to (s.error ?: "generation failed"))
+        GenerationState.PENDING -> mapOf("state" to "PENDING")
     }
 }

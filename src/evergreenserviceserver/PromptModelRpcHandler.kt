@@ -1,18 +1,19 @@
 package evergreenserviceserver
 
 import foundation.url.protocol.Libp2pRpcProtocol
+import photogenerationmanager.api.GenerationState
 import photogenerationmanager.api.PromptGenerationModel
+import photogenerationmanager.api.PromptGenerationStatus
 import java.util.Base64
 
 /**
- * Routes `url://<prompt-domain>/` RPC calls to a backing [PromptGenerationModel] (the Embedded).
+ * Routes `url://<prompt-domain>/` RPC calls to a backing async [PromptGenerationModel] (the Embedded).
  *
- * RPC methods:
- *   generatePrompt     -> {prompt: <new prompt text>}
- *   health             -> {status: "OK"}
- *   __bytecode_request -> {jar, className, stdlibJar} for SJVM client execution
- *
- * Input images arrive as comma-separated hex in the `images` parameter — see [ModelRpcSupport].
+ * RPC methods (all fast):
+ *   requestPromptGeneration -> {generationId}
+ *   promptGenerationStatus  -> {state, [prompt] | [error]}
+ *   health                  -> {status: "OK"}
+ *   __bytecode_request      -> {jar, className, stdlibJar}
  */
 class PromptModelRpcHandler(
     private val model: PromptGenerationModel,
@@ -26,7 +27,6 @@ class PromptModelRpcHandler(
             Libp2pRpcProtocol.RpcResponse.success(request.id, dispatch(request.method, request.params))
         } catch (e: Exception) {
             System.err.println("[EvergreenServiceServer/prompt] Error handling '${request.method}': ${e.message}")
-            e.printStackTrace()
             Libp2pRpcProtocol.RpcResponse.error(request.id, "-1", e.message ?: "Unknown error")
         }
     }
@@ -43,20 +43,29 @@ class PromptModelRpcHandler(
                 "stdlibJar" to Base64.getEncoder().encodeToString(stdlibJarBytes)
             )
 
-            "generatePrompt" -> {
+            "requestPromptGeneration" -> {
                 val prompt = requireParam(params, "prompt")
                 val inputImages = parseHexImageList(params["images"])
-                mapOf("prompt" to model.generatePrompt(prompt, inputImages))
+                mapOf("generationId" to model.requestPromptGeneration(prompt, inputImages))
             }
+
+            "promptGenerationStatus" -> statusToMap(model.promptGenerationStatus(requireParam(params, "generationId")))
 
             else -> mapOf(
                 "service" to "PromptGenerationModel",
                 "type" to "rpc",
                 "availableMethods" to listOf(
-                    "generatePrompt(prompt, images?): returns {prompt: <new prompt>}",
+                    "requestPromptGeneration(prompt, images?): returns {generationId}",
+                    "promptGenerationStatus(generationId): returns {state, prompt|error}",
                     "health(): returns {status: \"OK\"}"
                 )
             )
         }
+    }
+
+    private fun statusToMap(s: PromptGenerationStatus): Map<String, Any> = when (s.state) {
+        GenerationState.DONE -> mapOf("state" to "DONE", "prompt" to (s.prompt ?: ""))
+        GenerationState.ERROR -> mapOf("state" to "ERROR", "error" to (s.error ?: "generation failed"))
+        GenerationState.PENDING -> mapOf("state" to "PENDING")
     }
 }

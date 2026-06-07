@@ -9,8 +9,8 @@ import build.kotlin.annotations.MavenArtifactCoordinates
 
 val dependencies = resolveDependencies2(
     // PhotoGenerationManager Api (model interfaces) + Embedded (the model implementations)
-    MavenPrebuilt2("photogenerationmanager.api:photo-generation-manager-api:0.0.2"),
-    MavenPrebuilt2("photogenerationmanager.embedded:photo-generation-manager-embedded:0.0.3"),
+    MavenPrebuilt2("photogenerationmanager.api:photo-generation-manager-api:0.0.3"),
+    MavenPrebuilt2("photogenerationmanager.embedded:photo-generation-manager-embedded:0.0.6"),
     // HTTP client used by the Embedded
     MavenPrebuilt2("com.squareup.okhttp3:okhttp:4.11.0"),
     // Clock abstraction (Embedded + UrlProtocol)
@@ -68,7 +68,7 @@ val clientDependencies by lazy {
         MavenPrebuilt2("org.jetbrains.kotlin:kotlin-stdlib:1.9.22"),
         MavenPrebuilt2("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22"),
         MavenPrebuilt2("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22"),
-        MavenPrebuilt2("photogenerationmanager.api:photo-generation-manager-api:0.0.2"),
+        MavenPrebuilt2("photogenerationmanager.api:photo-generation-manager-api:0.0.3"),
         MavenPrebuilt2("foundation.url:service-bridge-stub:0.0.1"),
     )
 }
@@ -79,7 +79,7 @@ fun buildMaven(): File {
         // 0.0.1: Initial release — hosts EvergreenImageGenerationModel + EvergreenPromptGenerationModel
         //        behind url://evergreen-image-model/ and url://evergreen-prompt-model/. Image bytes
         //        cross the SJVM boundary as hex.
-        coordinates = "evergreenserviceserver:evergreen-service-server:0.0.1",
+        coordinates = "evergreenserviceserver:evergreen-service-server:0.0.2",
         src = File("src"),
         compileDependencies = dependencies
     )
@@ -95,8 +95,8 @@ private fun buildClientJar(srcDir: String, coordinates: String): File {
     ).jar
 }
 
-fun buildImageClientJar(): File = buildClientJar("src-client-image", "evergreenserviceserver:evergreen-image-client:0.0.1")
-fun buildPromptClientJar(): File = buildClientJar("src-client-prompt", "evergreenserviceserver:evergreen-prompt-client:0.0.1")
+fun buildImageClientJar(): File = buildClientJar("src-client-image", "evergreenserviceserver:evergreen-image-client:0.0.2")
+fun buildPromptClientJar(): File = buildClientJar("src-client-prompt", "evergreenserviceserver:evergreen-prompt-client:0.0.2")
 
 private fun resourceJar(entryName: String, contentJar: File): File {
     val tempFile = File.createTempFile("client-resources", ".jar")
@@ -117,7 +117,7 @@ private fun buildClientResourcesJar(srcDir: String, coordinates: String, entryNa
 
 fun buildFatJar(): File {
     val manifest = Manifest("evergreenserviceserver.MainKt")
-    val imageResources = buildClientResourcesJar("src-client-image", "evergreenserviceserver:evergreen-image-client:0.0.1", "image-client-impl.jar")
-    val promptResources = buildClientResourcesJar("src-client-prompt", "evergreenserviceserver:evergreen-prompt-client:0.0.1", "prompt-client-impl.jar")
+    val imageResources = buildClientResourcesJar("src-client-image", "evergreenserviceserver:evergreen-image-client:0.0.2", "image-client-impl.jar")
+    val promptResources = buildClientResourcesJar("src-client-prompt", "evergreenserviceserver:evergreen-prompt-client:0.0.2", "prompt-client-impl.jar")
     return BuildJar(manifest, dependencies.map { it.jar } + buildSkinnyJar() + imageResources + promptResources)
 }
