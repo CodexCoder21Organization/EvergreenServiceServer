@@ -1,0 +1,6 @@
+{
+  "name": "evergreen-service-server",
+  "source": "src",
+  "buildscript": "build.kts",
+  "readme": "README.md"
+}
