@@ -65,6 +65,20 @@ scripts/test.bash --test .
 java -jar evergreen-server.jar    # registers both url:// services; Ctrl+C to stop
 ```
 
-The tests construct each RPC handler over the real Embedded model pointed at a fake self-signed
-HTTPS Evergreen server and verify the image hex round-trip, input-image SHA-256 forwarding, the
-prompt text path, and error handling.
+### Tests
+
+Two layers of tests, all hermetic (no real Evergreen server, no public relay):
+
+- **Handler tests** (`tests/testEvergreenServiceServerHandlers.kts`) construct each RPC handler over
+  the real Embedded model pointed at a fake self-signed HTTPS Evergreen server and verify the image
+  hex round-trip, input-image SHA-256 forwarding, the prompt text path, and error handling.
+- **End-to-end tests** (`tests/testEvergreenServiceServerEndToEnd.kts`) exercise the *full* `url://`
+  transport between two in-JVM `UrlProtocol2` nodes wired directly over loopback. A simplified
+  in-memory `ImageGenerationModel`/`PromptGenerationModel` (returning a fixed image/string) is
+  registered behind a `url://`; a consumer calls
+  `UrlResolver.openSandboxedConnection(url, Model::class)` and runs the **real client bytecode** in an
+  SJVM sandbox, doing the async request→poll→DONE flow over real RPC. These assert that the input
+  images marshal client→server as hex and — the path the handler tests can't reach — that a generated
+  image `ByteArray` survives the sandbox→host proxy return byte-for-byte. The client bytecode is
+  loaded from the classpath via the `buildImageClientResourcesJar()` / `buildPromptClientResourcesJar()`
+  build rules.
