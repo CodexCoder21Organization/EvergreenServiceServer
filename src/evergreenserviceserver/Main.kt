@@ -35,8 +35,15 @@ fun main() {
     println("  image model: ${config.imageModelUrl}  ->  url://$imageDomain/")
     println("  prompt model: ${config.promptModelUrl}  ->  url://$promptDomain/")
 
-    val imageModel = EvergreenImageGenerationModel(serverBaseUrl = config.evergreenUrl, modelUrl = config.imageModelUrl)
-    val promptModel = EvergreenPromptGenerationModel(serverBaseUrl = config.evergreenUrl, modelUrl = config.promptModelUrl)
+    // Wrap each backing model in the server-side timeout/cancel enforcer (default 5-minute timeout,
+    // SystemClock): a generation that stays PENDING past the deadline — or is cancelled by a consumer
+    // — is reported as ERROR, so no consumer is ever left polling a stuck generation forever.
+    val imageModel = TimeoutEnforcingImageModel(
+        EvergreenImageGenerationModel(serverBaseUrl = config.evergreenUrl, modelUrl = config.imageModelUrl)
+    )
+    val promptModel = TimeoutEnforcingPromptModel(
+        EvergreenPromptGenerationModel(serverBaseUrl = config.evergreenUrl, modelUrl = config.promptModelUrl)
+    )
 
     val stdlibJar = loadServerResource("/stdlib.jar")
     val imageClientJar = loadServerResource("/image-client-impl.jar")

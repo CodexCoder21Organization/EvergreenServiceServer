@@ -12,6 +12,7 @@ import java.util.Base64
  * RPC methods (all fast, so they work over a relay):
  *   requestImageGeneration -> {generationId}
  *   imageGenerationStatus  -> {state, [imageHex, contentType, url] | [error]}
+ *   cancelImageGeneration  -> {cancelled: true|false}
  *   health                 -> {status: "OK"}
  *   __bytecode_request     -> {jar, className, stdlibJar}
  *
@@ -54,12 +55,15 @@ class ImageModelRpcHandler(
 
             "imageGenerationStatus" -> statusToMap(model.imageGenerationStatus(requireParam(params, "generationId")))
 
+            "cancelImageGeneration" -> mapOf("cancelled" to model.cancelImageGeneration(requireParam(params, "generationId")))
+
             else -> mapOf(
                 "service" to "ImageGenerationModel",
                 "type" to "rpc",
                 "availableMethods" to listOf(
                     "requestImageGeneration(prompt, images?): returns {generationId}",
                     "imageGenerationStatus(generationId): returns {state, imageHex|error}",
+                    "cancelImageGeneration(generationId): returns {cancelled}",
                     "health(): returns {status: \"OK\"}"
                 )
             )

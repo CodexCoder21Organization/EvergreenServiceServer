@@ -1,7 +1,7 @@
 @file:WithArtifact("evergreenserviceserver.buildMaven()")
 @file:WithArtifact("evergreenserviceserver.buildImageClientResourcesJar()")
 @file:WithArtifact("evergreenserviceserver.buildPromptClientResourcesJar()")
-@file:WithArtifact("photogenerationmanager.api:photo-generation-manager-api:0.0.3")
+@file:WithArtifact("photogenerationmanager.api:photo-generation-manager-api:0.0.4")
 @file:WithArtifact("community.kotlin.clocks.simple:community-kotlin-clocks-simple:0.0.3")
 // UrlResolver + UrlProtocol — the exact version pair the server module is built against.
 @file:WithArtifact("foundation.url:resolver:0.0.504")
@@ -57,6 +57,7 @@
 package evergreenserviceserver
 
 import build.kotlin.withartifact.WithArtifact
+import community.kotlin.clocks.simple.ManualClock
 import foundation.url.protocol.BootstrapPeer
 import foundation.url.protocol.Libp2pPeer
 import foundation.url.protocol.PublicAddressDiscovery
@@ -64,6 +65,7 @@ import foundation.url.protocol.ServiceHandler
 import foundation.url.resolver.UrlProtocol2
 import foundation.url.resolver.UrlResolver
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -718,6 +720,172 @@ fun testImageAndPromptServicesCoexistEndToEndOverUrl() {
             assertTrue("prompt status never left PENDING", promptStatus != null)
             assertEquals(GenerationState.DONE, promptStatus!!.state)
             assertEquals("the prompt URL must route to the prompt model", fixedPrompt, promptStatus.prompt)
+        }
+    )
+}
+
+// ===================== Timeout + cancel over the full url:// transport =====================
+//
+// These exercise the server-side TimeoutEnforcingImageModel/TimeoutEnforcingPromptModel — the exact
+// wrapping `main` applies — through the SJVM sandbox proxy. The backing model never completes on its
+// own; the enforcer (Clock-driven, advanced/triggered from the test) is what turns the generation
+// terminal, proving the timeout and the cancel RPC survive the openSandboxedConnection -> client
+// bytecode -> RPC -> handler -> enforcer round-trip.
+
+/**
+ * A generation stuck PENDING on the backing model is reported as a timeout ERROR to the sandboxed
+ * client once the server-side enforcer's [ManualClock] passes the 5-minute deadline — verifying the
+ * timeout is enforced on the SERVER and surfaces, verbatim, over url://. The clock is advanced from
+ * the test thread, so no real waiting occurs.
+ */
+@Test
+fun testImageGenerationTimesOutOverUrl() {
+    fun loadRes(name: String): ByteArray {
+        val s = object {}.javaClass.getResourceAsStream(name)
+            ?: throw IllegalStateException("resource $name not on the test classpath")
+        return s.use { it.readBytes() }
+    }
+    val backing = object : ImageGenerationModel {
+        override fun requestImageGeneration(prompt: String, inputImages: List<ByteArray>): String = "img-stuck"
+        override fun imageGenerationStatus(generationId: String): ImageGenerationStatus = object : ImageGenerationStatus {
+            override val state = GenerationState.PENDING
+            override val image: GeneratedImage? = null
+            override val error: String? = null
+        }
+    }
+    val clock = ManualClock(0L)
+    val enforcer = TimeoutEnforcingImageModel(backing, clock, 5 * 60 * 1000L)
+    val handler = ImageModelRpcHandler(enforcer, ByteArray(0), "x", ByteArray(0))
+
+    runTwoNodeServiceTest(
+        serviceId = "e2e.image.timeout.${System.nanoTime()}",
+        clientJar = loadRes("/image-client-impl.jar"),
+        implClassName = "evergreenserviceserver/ImageGenerationModelClientImpl",
+        dispatch = { method, params -> handler.handleP2pRequest(method, params) },
+        exercise = { client, url ->
+            val proxy = client.openSandboxedConnection(url, ImageGenerationModel::class)
+            val id = proxy.requestImageGeneration("a stuck generation", emptyList())
+            assertTrue("requestImageGeneration must return a non-empty id over url://", id.isNotEmpty())
+            assertEquals("before the deadline the generation is PENDING over url://",
+                GenerationState.PENDING, proxy.imageGenerationStatus(id).state)
+
+            clock.advanceBy(5 * 60 * 1000L) // cross the server-side deadline
+
+            // Poll: the next status RPC must reflect the server-enforced timeout.
+            var status: ImageGenerationStatus? = null
+            val deadline = System.currentTimeMillis() + 20_000
+            while (System.currentTimeMillis() < deadline) {
+                val s = proxy.imageGenerationStatus(id)
+                if (s.state != GenerationState.PENDING) { status = s; break }
+                Thread.sleep(50)
+            }
+            assertTrue("the server-enforced timeout never surfaced over url://", status != null)
+            assertEquals(GenerationState.ERROR, status!!.state)
+            assertNull("a timed-out generation must carry no image over url://", status.image)
+            assertTrue("the timeout error must explain it timed out, but was: ${status.error}",
+                status.error!!.contains("timed out after 300 seconds"))
+        }
+    )
+}
+
+/**
+ * The cancel RPC works end-to-end: the sandboxed client's cancelImageGeneration call reaches the
+ * server enforcer, returns true, and the generation's subsequent status becomes a cancellation ERROR.
+ * This is the path the WUI's Cancel button drives — proving a default Api method routes through the
+ * proxy to the sandbox client bytecode and back.
+ */
+@Test
+fun testImageGenerationCancelOverUrl() {
+    fun loadRes(name: String): ByteArray {
+        val s = object {}.javaClass.getResourceAsStream(name)
+            ?: throw IllegalStateException("resource $name not on the test classpath")
+        return s.use { it.readBytes() }
+    }
+    val backing = object : ImageGenerationModel {
+        override fun requestImageGeneration(prompt: String, inputImages: List<ByteArray>): String = "img-stuck"
+        override fun imageGenerationStatus(generationId: String): ImageGenerationStatus = object : ImageGenerationStatus {
+            override val state = GenerationState.PENDING
+            override val image: GeneratedImage? = null
+            override val error: String? = null
+        }
+    }
+    val enforcer = TimeoutEnforcingImageModel(backing) // default 5-min timeout; cancel happens first
+    val handler = ImageModelRpcHandler(enforcer, ByteArray(0), "x", ByteArray(0))
+
+    runTwoNodeServiceTest(
+        serviceId = "e2e.image.cancel.${System.nanoTime()}",
+        clientJar = loadRes("/image-client-impl.jar"),
+        implClassName = "evergreenserviceserver/ImageGenerationModelClientImpl",
+        dispatch = { method, params -> handler.handleP2pRequest(method, params) },
+        exercise = { client, url ->
+            val proxy = client.openSandboxedConnection(url, ImageGenerationModel::class)
+            val id = proxy.requestImageGeneration("a generation to cancel", emptyList())
+            assertEquals("the generation starts PENDING over url://", GenerationState.PENDING, proxy.imageGenerationStatus(id).state)
+
+            assertTrue("cancelImageGeneration must return true for a pending generation over url://",
+                proxy.cancelImageGeneration(id))
+
+            var status: ImageGenerationStatus? = null
+            val deadline = System.currentTimeMillis() + 20_000
+            while (System.currentTimeMillis() < deadline) {
+                val s = proxy.imageGenerationStatus(id)
+                if (s.state != GenerationState.PENDING) { status = s; break }
+                Thread.sleep(50)
+            }
+            assertTrue("the cancellation never surfaced over url://", status != null)
+            assertEquals(GenerationState.ERROR, status!!.state)
+            assertTrue("the error must explain it was cancelled, but was: ${status.error}",
+                status.error!!.contains("was cancelled"))
+
+            assertFalse("a second cancel of the same generation must return false over url://",
+                proxy.cancelImageGeneration(id))
+        }
+    )
+}
+
+/** The prompt-side cancel RPC works end-to-end (the prompt client bytecode's cancel path over url://). */
+@Test
+fun testPromptGenerationCancelOverUrl() {
+    fun loadRes(name: String): ByteArray {
+        val s = object {}.javaClass.getResourceAsStream(name)
+            ?: throw IllegalStateException("resource $name not on the test classpath")
+        return s.use { it.readBytes() }
+    }
+    val backing = object : PromptGenerationModel {
+        override fun requestPromptGeneration(prompt: String, inputImages: List<ByteArray>): String = "prompt-stuck"
+        override fun promptGenerationStatus(generationId: String): PromptGenerationStatus = object : PromptGenerationStatus {
+            override val state = GenerationState.PENDING
+            override val prompt: String? = null
+            override val error: String? = null
+        }
+    }
+    val enforcer = TimeoutEnforcingPromptModel(backing)
+    val handler = PromptModelRpcHandler(enforcer, ByteArray(0), "x", ByteArray(0))
+
+    runTwoNodeServiceTest(
+        serviceId = "e2e.prompt.cancel.${System.nanoTime()}",
+        clientJar = loadRes("/prompt-client-impl.jar"),
+        implClassName = "evergreenserviceserver/PromptGenerationModelClientImpl",
+        dispatch = { method, params -> handler.handleP2pRequest(method, params) },
+        exercise = { client, url ->
+            val proxy = client.openSandboxedConnection(url, PromptGenerationModel::class)
+            val id = proxy.requestPromptGeneration("a prompt to cancel", emptyList())
+            assertEquals(GenerationState.PENDING, proxy.promptGenerationStatus(id).state)
+
+            assertTrue("cancelPromptGeneration must return true for a pending generation over url://",
+                proxy.cancelPromptGeneration(id))
+
+            var status: PromptGenerationStatus? = null
+            val deadline = System.currentTimeMillis() + 20_000
+            while (System.currentTimeMillis() < deadline) {
+                val s = proxy.promptGenerationStatus(id)
+                if (s.state != GenerationState.PENDING) { status = s; break }
+                Thread.sleep(50)
+            }
+            assertTrue("the prompt cancellation never surfaced over url://", status != null)
+            assertEquals(GenerationState.ERROR, status!!.state)
+            assertTrue("the error must explain it was cancelled, but was: ${status.error}",
+                status.error!!.contains("was cancelled"))
         }
     )
 }

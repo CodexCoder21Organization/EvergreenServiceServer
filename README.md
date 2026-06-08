@@ -5,10 +5,12 @@ global P2P network:
 
 - **`url://evergreen-image-model/`** — an async
   [`ImageGenerationModel`](https://github.com/CodexCoder21Organization/PhotoGenerationManagerApi):
-  `requestImageGeneration(prompt, inputImages)` → id, then `imageGenerationStatus(id)` → the image.
+  `requestImageGeneration(prompt, inputImages)` → id, then `imageGenerationStatus(id)` → the image,
+  and `cancelImageGeneration(id)` to abandon one in flight.
 - **`url://evergreen-prompt-model/`** — an async
   [`PromptGenerationModel`](https://github.com/CodexCoder21Organization/PhotoGenerationManagerApi):
-  `requestPromptGeneration(prompt, inputImages)` → id, then `promptGenerationStatus(id)` → text.
+  `requestPromptGeneration(prompt, inputImages)` → id, then `promptGenerationStatus(id)` → text,
+  and `cancelPromptGeneration(id)`.
 
 The models are **asynchronous** so every RPC is fast — the slow generation runs server-side, which is
 what lets a public consumer reach this NAT'd node through the relay (relays tolerate short RPCs, not
@@ -17,6 +19,24 @@ long blocking ones).
 It hosts the
 [`EvergreenImageGenerationModel` / `EvergreenPromptGenerationModel`](https://github.com/CodexCoder21Organization/PhotoGenerationManagerEmbedded)
 implementations behind url:// RPC, delegating all domain logic to them.
+
+## Generation timeout and cancellation
+
+Each backing model is wrapped in a server-side **timeout/cancel enforcer**
+(`TimeoutEnforcingImageModel` / `TimeoutEnforcingPromptModel`), so the limits hold no matter which
+consumer is polling:
+
+- **Timeout** — a generation that stays `PENDING` for more than **5 minutes**
+  (`DEFAULT_GENERATION_TIMEOUT_MS`) is reported as `ERROR` ("timed out after 300 seconds…"). A
+  generation that finishes first is never masked. The deadline is measured against an injectable
+  `community.kotlin.clocks.simple.Clock` (default `SystemClock`), so the behaviour is verified
+  instantly in unit tests with a `ManualClock` — no real waiting.
+- **Cancellation** — `cancelImageGeneration(id)` / `cancelPromptGeneration(id)` cancel a still-pending
+  generation; its next status becomes an `ERROR` ("was cancelled"). Cancel is sticky and wins over a
+  later backing result; cancelling an unknown, finished, or already-cancelled generation returns
+  `false`. This is what backs the Cancel button on the
+  [PhotoGenerationManagerWui](https://github.com/CodexCoder21Organization/PhotoGenerationManagerWui)
+  request page.
 
 ## Why run it locally
 

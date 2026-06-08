@@ -12,6 +12,7 @@ import java.util.Base64
  * RPC methods (all fast):
  *   requestPromptGeneration -> {generationId}
  *   promptGenerationStatus  -> {state, [prompt] | [error]}
+ *   cancelPromptGeneration  -> {cancelled: true|false}
  *   health                  -> {status: "OK"}
  *   __bytecode_request      -> {jar, className, stdlibJar}
  */
@@ -51,12 +52,15 @@ class PromptModelRpcHandler(
 
             "promptGenerationStatus" -> statusToMap(model.promptGenerationStatus(requireParam(params, "generationId")))
 
+            "cancelPromptGeneration" -> mapOf("cancelled" to model.cancelPromptGeneration(requireParam(params, "generationId")))
+
             else -> mapOf(
                 "service" to "PromptGenerationModel",
                 "type" to "rpc",
                 "availableMethods" to listOf(
                     "requestPromptGeneration(prompt, images?): returns {generationId}",
                     "promptGenerationStatus(generationId): returns {state, prompt|error}",
+                    "cancelPromptGeneration(generationId): returns {cancelled}",
                     "health(): returns {status: \"OK\"}"
                 )
             )

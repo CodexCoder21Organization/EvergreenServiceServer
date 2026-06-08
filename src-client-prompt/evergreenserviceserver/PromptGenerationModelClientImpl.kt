@@ -34,6 +34,11 @@ class PromptGenerationModelClientImpl {
         }
     }
 
+    fun cancelPromptGeneration(generationId: String): Boolean {
+        val r = ServiceBridge.rpc("cancelPromptGeneration", mapOf("generationId" to generationId))
+        return r["cancelled"]?.toString()?.toBoolean() ?: false
+    }
+
     private fun bytesToHex(bytes: ByteArray): String {
         val digits = "0123456789abcdef"
         val sb = StringBuilder(bytes.size * 2)
