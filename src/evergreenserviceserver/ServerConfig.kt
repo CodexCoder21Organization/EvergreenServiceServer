@@ -4,8 +4,12 @@ import photogenerationmanager.embedded.EvergreenImageGenerationModel
 import photogenerationmanager.embedded.EvergreenPhotoGenerationService
 import java.io.File
 
-/** Default url:// of the Evergreen prompt (text) model, used when `PROMPT_MODEL_URL` is unset. */
-const val DEFAULT_PROMPT_MODEL_URL = "evergreen:///mbns/vz/home/courier/rakicevic/gemfuse_image_agent"
+/**
+ * Default url:// of the Evergreen prompt (text) model, used when `PROMPT_MODEL_URL` is unset. This is
+ * a prompt-rewriter model that returns text; `mbns`/`bns` addresses require three slashes
+ * (`evergreen:///mbns/...`).
+ */
+const val DEFAULT_PROMPT_MODEL_URL = "evergreen:///mbns/el/home/courier/lyria_rewriter/v4p1s_whitewater"
 
 /**
  * Immutable, resolved configuration for a single EvergreenServiceServer process: the backing

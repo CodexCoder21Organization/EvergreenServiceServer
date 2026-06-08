@@ -21,7 +21,7 @@ import photogenerationmanager.embedded.EvergreenPromptGenerationModel
  * Environment variables:
  *   EVERGREEN_SERVER_URL  Base URL of the Evergreen server (default https://192.168.86.243:9443)
  *   IMAGE_MODEL_URL       Evergreen image model (default the gemfuse image agent)
- *   PROMPT_MODEL_URL      Evergreen text model (default the rakicevic agent)
+ *   PROMPT_MODEL_URL      Evergreen text model (default the lyria_rewriter prompt-rewriter)
  *   IMAGE_SERVICE_DOMAIN  url:// domain for the image model (default evergreen-image-model)
  *   PROMPT_SERVICE_DOMAIN url:// domain for the prompt model (default evergreen-prompt-model)
  */

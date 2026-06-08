@@ -10,7 +10,7 @@ import build.kotlin.annotations.MavenArtifactCoordinates
 val dependencies = resolveDependencies2(
     // PhotoGenerationManager Api (model interfaces) + Embedded (the model implementations)
     MavenPrebuilt2("photogenerationmanager.api:photo-generation-manager-api:0.0.3"),
-    MavenPrebuilt2("photogenerationmanager.embedded:photo-generation-manager-embedded:0.0.6"),
+    MavenPrebuilt2("photogenerationmanager.embedded:photo-generation-manager-embedded:0.0.7"),
     // HTTP client used by the Embedded
     MavenPrebuilt2("com.squareup.okhttp3:okhttp:4.11.0"),
     // Clock abstraction (Embedded + UrlProtocol)
@@ -81,7 +81,10 @@ fun buildMaven(): File {
         //        cross the SJVM boundary as hex.
         // 0.0.3: Extract env/resource config into a documented, testable ServerConfig API
         //        (resolveServerConfig / loadServerResource); no behavioural change to main().
-        coordinates = "evergreenserviceserver:evergreen-service-server:0.0.3",
+        // 0.0.4: Correct DEFAULT_PROMPT_MODEL_URL to the lyria_rewriter text model (the previous
+        //        gemfuse_image_agent default returned images, never text); bump Embedded to 0.0.7
+        //        (auto-prefixes prompts with "Expand this prompt: ").
+        coordinates = "evergreenserviceserver:evergreen-service-server:0.0.4",
         src = File("src"),
         compileDependencies = dependencies
     )
