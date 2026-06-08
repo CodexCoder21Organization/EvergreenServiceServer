@@ -5,9 +5,7 @@ import foundation.url.protocol.ServiceRegistrationConfig
 import foundation.url.resolver.UrlProtocol2
 import foundation.url.resolver.UrlResolver
 import photogenerationmanager.embedded.EvergreenImageGenerationModel
-import photogenerationmanager.embedded.EvergreenPhotoGenerationService
 import photogenerationmanager.embedded.EvergreenPromptGenerationModel
-import java.io.File
 
 /**
  * EvergreenServiceServer — a single process that exposes two `url://` endpoints backed by a local
@@ -30,21 +28,19 @@ import java.io.File
 fun main() {
     println("=== EvergreenServiceServer ===")
 
-    val evergreenUrl = env("EVERGREEN_SERVER_URL", EvergreenPhotoGenerationService.DEFAULT_SERVER_BASE_URL)
-    val imageModelUrl = env("IMAGE_MODEL_URL", EvergreenImageGenerationModel.DEFAULT_IMAGE_MODEL_URL)
-    val promptModelUrl = env("PROMPT_MODEL_URL", DEFAULT_PROMPT_MODEL_URL)
-    val imageDomain = env("IMAGE_SERVICE_DOMAIN", "evergreen-image-model")
-    val promptDomain = env("PROMPT_SERVICE_DOMAIN", "evergreen-prompt-model")
-    println("Backing Evergreen server: $evergreenUrl")
-    println("  image model: $imageModelUrl  ->  url://$imageDomain/")
-    println("  prompt model: $promptModelUrl  ->  url://$promptDomain/")
+    val config = resolveServerConfig(System::getenv)
+    val imageDomain = config.imageDomain
+    val promptDomain = config.promptDomain
+    println("Backing Evergreen server: ${config.evergreenUrl}")
+    println("  image model: ${config.imageModelUrl}  ->  url://$imageDomain/")
+    println("  prompt model: ${config.promptModelUrl}  ->  url://$promptDomain/")
 
-    val imageModel = EvergreenImageGenerationModel(serverBaseUrl = evergreenUrl, modelUrl = imageModelUrl)
-    val promptModel = EvergreenPromptGenerationModel(serverBaseUrl = evergreenUrl, modelUrl = promptModelUrl)
+    val imageModel = EvergreenImageGenerationModel(serverBaseUrl = config.evergreenUrl, modelUrl = config.imageModelUrl)
+    val promptModel = EvergreenPromptGenerationModel(serverBaseUrl = config.evergreenUrl, modelUrl = config.promptModelUrl)
 
-    val stdlibJar = loadResource("/stdlib.jar")
-    val imageClientJar = loadResource("/image-client-impl.jar")
-    val promptClientJar = loadResource("/prompt-client-impl.jar")
+    val stdlibJar = loadServerResource("/stdlib.jar")
+    val imageClientJar = loadServerResource("/image-client-impl.jar")
+    val promptClientJar = loadServerResource("/prompt-client-impl.jar")
     println("Loaded SJVM stdlib (${stdlibJar.size} b), image client (${imageClientJar.size} b), prompt client (${promptClientJar.size} b)")
 
     val imageHandler = ImageModelRpcHandler(imageModel, imageClientJar, IMAGE_CLIENT_CLASS, stdlibJar)
@@ -87,10 +83,6 @@ fun main() {
 
 private const val IMAGE_CLIENT_CLASS = "evergreenserviceserver/ImageGenerationModelClientImpl"
 private const val PROMPT_CLIENT_CLASS = "evergreenserviceserver/PromptGenerationModelClientImpl"
-private const val DEFAULT_PROMPT_MODEL_URL = "evergreen:///mbns/vz/home/courier/rakicevic/gemfuse_image_agent"
-
-private fun env(name: String, default: String): String =
-    System.getenv(name)?.takeIf { it.isNotBlank() } ?: default
 
 private fun serviceHandler(
     jarBytes: ByteArray,
@@ -105,15 +97,4 @@ private fun serviceHandler(
     override fun getImplementationJar(): ByteArray = jarBytes
     override fun getImplementationClassName(): String = implClassName
     override fun onShutdown() {}
-}
-
-private fun loadResource(name: String): ByteArray {
-    val stream = object {}.javaClass.getResourceAsStream(name)
-    if (stream != null) return stream.use { it.readBytes() }
-    val local = File(name.removePrefix("/"))
-    if (local.exists()) return local.readBytes()
-    throw IllegalStateException(
-        "Cannot find resource $name. For /stdlib.jar ensure net.javadeploy.sjvm:avianStdlibHelper-jvm " +
-            "is on the classpath; the client jars are bundled by buildFatJar."
-    )
 }

@@ -67,18 +67,26 @@ java -jar evergreen-server.jar    # registers both url:// services; Ctrl+C to st
 
 ### Tests
 
-Two layers of tests, all hermetic (no real Evergreen server, no public relay):
+Three layers of tests, all hermetic (no real Evergreen server, no public relay):
 
 - **Handler tests** (`tests/testEvergreenServiceServerHandlers.kts`) construct each RPC handler over
-  the real Embedded model pointed at a fake self-signed HTTPS Evergreen server and verify the image
-  hex round-trip, input-image SHA-256 forwarding, the prompt text path, and error handling.
+  the real Embedded model pointed at a fake self-signed HTTPS Evergreen server (image hex round-trip,
+  input-image SHA-256 forwarding, the prompt text path, prompt-from-image error) and, over simple
+  in-memory models, cover the remaining handler surface: the `DONE`/`PENDING`/`ERROR` status maps
+  (including the default "generation failed" message), the descriptive missing-parameter errors, the
+  `handleRequest(RpcRequest)` success/error wrapping, the unknown-method service descriptor, the
+  `__bytecode_request` branch, and the hex / `parseHexImageList` edge cases (multiple images, a `List`
+  parameter, empty/missing images, and odd-length hex).
 - **End-to-end tests** (`tests/testEvergreenServiceServerEndToEnd.kts`) exercise the *full* `url://`
   transport between two in-JVM `UrlProtocol2` nodes wired directly over loopback. A simplified
-  in-memory `ImageGenerationModel`/`PromptGenerationModel` (returning a fixed image/string) is
-  registered behind a `url://`; a consumer calls
-  `UrlResolver.openSandboxedConnection(url, Model::class)` and runs the **real client bytecode** in an
-  SJVM sandbox, doing the async request→poll→DONE flow over real RPC. These assert that the input
-  images marshal client→server as hex and — the path the handler tests can't reach — that a generated
-  image `ByteArray` survives the sandbox→host proxy return byte-for-byte. The client bytecode is
-  loaded from the classpath via the `buildImageClientResourcesJar()` / `buildPromptClientResourcesJar()`
-  build rules.
+  in-memory `ImageGenerationModel`/`PromptGenerationModel` is registered behind a `url://`; a consumer
+  calls `UrlResolver.openSandboxedConnection(url, Model::class)` and runs the **real client bytecode**
+  in an SJVM sandbox, doing the async request→poll→DONE flow over real RPC. These assert that input
+  images marshal client→server as hex (on **both** the image and prompt paths), that a generated image
+  `ByteArray` survives the sandbox→host proxy byte-for-byte, that an `ERROR` status round-trips, that a
+  server-side failure surfaces to the client as a thrown exception (not a hang or a fake id), and that
+  both services **coexist on one node** and route independently. The client bytecode is loaded from the
+  classpath via the `buildImageClientResourcesJar()` / `buildPromptClientResourcesJar()` build rules.
+- **Config tests** (`tests/testEvergreenServiceServerConfig.kts`) cover `resolveServerConfig` (env-var
+  defaults, overrides, and blank-as-unset, with an injected environment lookup) and
+  `loadServerResource` (the descriptive missing-resource error).

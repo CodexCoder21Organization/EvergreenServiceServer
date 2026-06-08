@@ -302,3 +302,346 @@ fun testPromptModelEndToEndOverUrl() {
         }
     )
 }
+
+/**
+ * An ERROR generation status round-trips through the full url:// transport: the server-side model
+ * reports [GenerationState.ERROR] with a message, and the client — running the real client bytecode
+ * in the SJVM sandbox — decodes it back to an ERROR status carrying the same message and no image.
+ * This exercises the client's ERROR branch and the server's ERROR status map, which the happy-path
+ * test never reaches.
+ */
+@Test
+fun testImageErrorStatusEndToEndOverUrl() {
+    fun loadRes(name: String): ByteArray {
+        val s = object {}.javaClass.getResourceAsStream(name)
+            ?: throw IllegalStateException("resource $name not on the test classpath")
+        return s.use { it.readBytes() }
+    }
+    val errorMessage = "the evergreen box is unreachable"
+    val model = object : ImageGenerationModel {
+        override fun requestImageGeneration(prompt: String, inputImages: List<ByteArray>): String {
+            return "img-err-1"
+        }
+
+        override fun imageGenerationStatus(generationId: String): ImageGenerationStatus {
+            return object : ImageGenerationStatus {
+                override val state = GenerationState.ERROR
+                override val image: GeneratedImage? = null
+                override val error: String? = errorMessage
+            }
+        }
+    }
+    val handler = ImageModelRpcHandler(model, ByteArray(0), "x", ByteArray(0))
+
+    runTwoNodeServiceTest(
+        serviceId = "e2e.image.error.${System.nanoTime()}",
+        clientJar = loadRes("/image-client-impl.jar"),
+        implClassName = "evergreenserviceserver/ImageGenerationModelClientImpl",
+        dispatch = { method, params -> handler.handleP2pRequest(method, params) },
+        exercise = { client, url ->
+            val proxy = client.openSandboxedConnection(url, ImageGenerationModel::class)
+            val generationId = proxy.requestImageGeneration("trigger an error", emptyList())
+            assertTrue("requestImageGeneration must return a non-empty id over url://", generationId.isNotEmpty())
+
+            var status: ImageGenerationStatus? = null
+            val deadline = System.currentTimeMillis() + 20_000
+            while (System.currentTimeMillis() < deadline) {
+                val s = proxy.imageGenerationStatus(generationId)
+                if (s.state != GenerationState.PENDING) { status = s; break }
+                Thread.sleep(50)
+            }
+            assertTrue("image status never left PENDING over url://", status != null)
+            assertEquals(GenerationState.ERROR, status!!.state)
+            assertEquals("the ERROR message must round-trip server->client over url://", errorMessage, status.error)
+            assertNull("an ERROR status must not carry an image", status.image)
+        }
+    )
+}
+
+/**
+ * A server-side generation *failure* (the model throws, not a clean ERROR status) must surface to the
+ * sandboxed client as a thrown exception over url:// — it must NOT hang and must NOT masquerade as a
+ * successful generation id. This is the path with only manual coverage before.
+ */
+@Test
+fun testImageGenerationFailureSurfacesAsThrowableOverUrl() {
+    fun loadRes(name: String): ByteArray {
+        val s = object {}.javaClass.getResourceAsStream(name)
+            ?: throw IllegalStateException("resource $name not on the test classpath")
+        return s.use { it.readBytes() }
+    }
+    val model = object : ImageGenerationModel {
+        override fun requestImageGeneration(prompt: String, inputImages: List<ByteArray>): String {
+            throw IllegalStateException("evergreen generation failed")
+        }
+
+        override fun imageGenerationStatus(generationId: String): ImageGenerationStatus {
+            return object : ImageGenerationStatus {
+                override val state = GenerationState.PENDING
+                override val image: GeneratedImage? = null
+                override val error: String? = null
+            }
+        }
+    }
+    val handler = ImageModelRpcHandler(model, ByteArray(0), "x", ByteArray(0))
+
+    runTwoNodeServiceTest(
+        serviceId = "e2e.image.fail.${System.nanoTime()}",
+        clientJar = loadRes("/image-client-impl.jar"),
+        implClassName = "evergreenserviceserver/ImageGenerationModelClientImpl",
+        dispatch = { method, params -> handler.handleP2pRequest(method, params) },
+        exercise = { client, url ->
+            val proxy = client.openSandboxedConnection(url, ImageGenerationModel::class)
+            val thrown = try {
+                proxy.requestImageGeneration("boom", emptyList())
+                null
+            } catch (t: Throwable) {
+                t
+            }
+            assertTrue(
+                "a server-side generation failure must surface to the client as a thrown exception over " +
+                    "url://, not return a fabricated id; instead nothing was thrown",
+                thrown != null
+            )
+        }
+    )
+}
+
+/**
+ * The prompt path also marshals input images client->server (the happy-path prompt test sends none).
+ * Two input images are sent through the typed proxy, joined to hex by the real client bytecode, split
+ * and decoded server-side, and asserted byte-for-byte; the generated prompt text round-trips back.
+ */
+@Test
+fun testPromptModelWithInputImagesEndToEndOverUrl() {
+    fun loadRes(name: String): ByteArray {
+        val s = object {}.javaClass.getResourceAsStream(name)
+            ?: throw IllegalStateException("resource $name not on the test classpath")
+        return s.use { it.readBytes() }
+    }
+    val fixedPrompt = "a refined prompt synthesised from two images"
+    val img1 = byteArrayOf(1, 2, 3, 4, 5)
+    val img2 = byteArrayOf(0x7f, 0x00, 0xff.toByte(), 0x10, 0x80.toByte())
+    val capturedPrompt = arrayOfNulls<String>(1)
+    val capturedInputs = arrayOfNulls<List<ByteArray>>(1)
+
+    val model = object : PromptGenerationModel {
+        override fun requestPromptGeneration(prompt: String, inputImages: List<ByteArray>): String {
+            capturedPrompt[0] = prompt
+            capturedInputs[0] = inputImages
+            return "prompt-gen-imgs"
+        }
+
+        override fun promptGenerationStatus(generationId: String): PromptGenerationStatus {
+            return object : PromptGenerationStatus {
+                override val state = GenerationState.DONE
+                override val prompt = fixedPrompt
+                override val error: String? = null
+            }
+        }
+    }
+    val handler = PromptModelRpcHandler(model, ByteArray(0), "x", ByteArray(0))
+
+    runTwoNodeServiceTest(
+        serviceId = "e2e.prompt.images.${System.nanoTime()}",
+        clientJar = loadRes("/prompt-client-impl.jar"),
+        implClassName = "evergreenserviceserver/PromptGenerationModelClientImpl",
+        dispatch = { method, params -> handler.handleP2pRequest(method, params) },
+        exercise = { client, url ->
+            val proxy = client.openSandboxedConnection(url, PromptGenerationModel::class)
+            val generationId = proxy.requestPromptGeneration("describe these two images", listOf(img1, img2))
+            assertTrue("requestPromptGeneration must return a non-empty id over url://", generationId.isNotEmpty())
+
+            var status: PromptGenerationStatus? = null
+            val deadline = System.currentTimeMillis() + 20_000
+            while (System.currentTimeMillis() < deadline) {
+                val s = proxy.promptGenerationStatus(generationId)
+                if (s.state != GenerationState.PENDING) { status = s; break }
+                Thread.sleep(50)
+            }
+            assertTrue("prompt generation never left PENDING over url://", status != null)
+            assertEquals(GenerationState.DONE, status!!.state)
+            assertEquals(fixedPrompt, status.prompt)
+
+            assertEquals("describe these two images", capturedPrompt[0])
+            assertEquals("both input images must marshal client->server on the prompt path", 2, capturedInputs[0]!!.size)
+            assertTrue("first input image must round-trip as hex", capturedInputs[0]!![0].contentEquals(img1))
+            assertTrue("second input image must round-trip as hex", capturedInputs[0]!![1].contentEquals(img2))
+        }
+    )
+}
+
+/**
+ * Stands up ONE server node that registers BOTH the image and the prompt service (as `main` does),
+ * wires a single client to it over loopback, and verifies the two services coexist and route
+ * independently: the image URL drives the image model and the prompt URL drives the prompt model.
+ */
+private fun runImageAndPromptNode(
+    imageServiceId: String,
+    promptServiceId: String,
+    imageClientJar: ByteArray,
+    promptClientJar: ByteArray,
+    imageDispatch: (String, Map<String, Any?>) -> Any?,
+    promptDispatch: (String, Map<String, Any?>) -> Any?,
+    exercise: (UrlResolver, String, String) -> Unit
+) {
+    val previousExplicitIp = PublicAddressDiscovery.getExplicitPublicIp()
+    PublicAddressDiscovery.clear()
+    PublicAddressDiscovery.setExplicitPublicIp("127.0.0.1")
+
+    val imageHandler = object : ServiceHandler {
+        override suspend fun handleRequest(path: String, params: Map<String, Any?>, metadata: Map<String, String>): Any? =
+            imageDispatch(path, params)
+
+        override fun getImplementationJar(): ByteArray = imageClientJar
+        override fun getImplementationClassName(): String = "evergreenserviceserver/ImageGenerationModelClientImpl"
+        override fun onShutdown() {}
+    }
+    val promptHandler = object : ServiceHandler {
+        override suspend fun handleRequest(path: String, params: Map<String, Any?>, metadata: Map<String, String>): Any? =
+            promptDispatch(path, params)
+
+        override fun getImplementationJar(): ByteArray = promptClientJar
+        override fun getImplementationClassName(): String = "evergreenserviceserver/PromptGenerationModelClientImpl"
+        override fun onShutdown() {}
+    }
+
+    val serverProtocol = UrlProtocol2(emptyList<BootstrapPeer>(), eagerlyJoinNetwork = false, listenPort = 0)
+    try {
+        val serverJoinInfo = serverProtocol.joinNetwork(alias = "multi-server")
+        serverProtocol.registerGlobalService(serviceUrl = "url://$imageServiceId/", handler = imageHandler)
+        serverProtocol.registerGlobalService(serviceUrl = "url://$promptServiceId/", handler = promptHandler)
+
+        val regDeadline = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < regDeadline) {
+            val ids = serverProtocol.getDiscoveredServices().map { it.serviceIdentifier }
+            if (ids.contains(imageServiceId) && ids.contains(promptServiceId)) break
+            Thread.sleep(25)
+        }
+
+        val serverPeer = Libp2pPeer.remote(
+            peerId = serverJoinInfo.peerId,
+            multiaddresses = serverJoinInfo.multiaddresses.map { it.replace(Regex("/ip4/[0-9.]+/"), "/ip4/127.0.0.1/") },
+            advertisedServices = listOf(imageServiceId, promptServiceId)
+        )
+
+        val clientProtocol = UrlProtocol2(listOf(serverPeer), eagerlyJoinNetwork = false, listenPort = 0)
+        val client = UrlResolver(clientProtocol)
+        try {
+            clientProtocol.joinNetwork(alias = "multi-client")
+            val discoveryDeadline = System.currentTimeMillis() + 15_000
+            while (System.currentTimeMillis() < discoveryDeadline) {
+                if (clientProtocol.findPeersForService(imageServiceId).isNotEmpty() &&
+                    clientProtocol.findPeersForService(promptServiceId).isNotEmpty()
+                ) break
+                Thread.sleep(50)
+            }
+            assertTrue(
+                "client never discovered both loopback services within 15s (image='$imageServiceId', " +
+                    "prompt='$promptServiceId'); known peers=${clientProtocol.getKnownPeers().size}",
+                clientProtocol.findPeersForService(imageServiceId).isNotEmpty() &&
+                    clientProtocol.findPeersForService(promptServiceId).isNotEmpty()
+            )
+
+            exercise(client, "url://$imageServiceId/", "url://$promptServiceId/")
+        } finally {
+            try { client.close() } catch (_: Throwable) {}
+            try { clientProtocol.close() } catch (_: Throwable) {}
+        }
+    } finally {
+        try { serverProtocol.close() } catch (_: Throwable) {}
+        PublicAddressDiscovery.clear()
+        if (previousExplicitIp != null) PublicAddressDiscovery.setExplicitPublicIp(previousExplicitIp)
+    }
+}
+
+/**
+ * Both services on one node, exercised by one client: the image URL must drive the image model
+ * (returning the fixed image bytes) and the prompt URL must drive the prompt model (returning the
+ * fixed text). Proves the two-domain topology `main` registers works end-to-end with correct routing.
+ */
+@Test
+fun testImageAndPromptServicesCoexistEndToEndOverUrl() {
+    fun loadRes(name: String): ByteArray {
+        val s = object {}.javaClass.getResourceAsStream(name)
+            ?: throw IllegalStateException("resource $name not on the test classpath")
+        return s.use { it.readBytes() }
+    }
+    val fixedImage = ByteArray(256) { (it * 13 + 5).toByte() }
+    val fixedPrompt = "coexisting prompt text"
+
+    val imageModel = object : ImageGenerationModel {
+        override fun requestImageGeneration(prompt: String, inputImages: List<ByteArray>): String {
+            return "coexist-img"
+        }
+
+        override fun imageGenerationStatus(generationId: String): ImageGenerationStatus {
+            return object : ImageGenerationStatus {
+                override val state = GenerationState.DONE
+                override val image: GeneratedImage = object : GeneratedImage {
+                    override val imageBytes = fixedImage
+                    override val contentType = "image/png"
+                    override val url = "url://coexist/$generationId"
+                }
+                override val error: String? = null
+            }
+        }
+    }
+    val promptModel = object : PromptGenerationModel {
+        override fun requestPromptGeneration(prompt: String, inputImages: List<ByteArray>): String {
+            return "coexist-prompt"
+        }
+
+        override fun promptGenerationStatus(generationId: String): PromptGenerationStatus {
+            return object : PromptGenerationStatus {
+                override val state = GenerationState.DONE
+                override val prompt = fixedPrompt
+                override val error: String? = null
+            }
+        }
+    }
+    val imageHandler = ImageModelRpcHandler(imageModel, ByteArray(0), "x", ByteArray(0))
+    val promptHandler = PromptModelRpcHandler(promptModel, ByteArray(0), "x", ByteArray(0))
+
+    val stamp = System.nanoTime()
+    runImageAndPromptNode(
+        imageServiceId = "e2e.coexist.image.$stamp",
+        promptServiceId = "e2e.coexist.prompt.$stamp",
+        imageClientJar = loadRes("/image-client-impl.jar"),
+        promptClientJar = loadRes("/prompt-client-impl.jar"),
+        imageDispatch = { method, params -> imageHandler.handleP2pRequest(method, params) },
+        promptDispatch = { method, params -> promptHandler.handleP2pRequest(method, params) },
+        exercise = { client, imageUrl, promptUrl ->
+            val imageProxy = client.openSandboxedConnection(imageUrl, ImageGenerationModel::class)
+            val imageId = imageProxy.requestImageGeneration("an image please", emptyList())
+            assertTrue("image id over url://", imageId.isNotEmpty())
+            var imageStatus: ImageGenerationStatus? = null
+            val imageDeadline = System.currentTimeMillis() + 20_000
+            while (System.currentTimeMillis() < imageDeadline) {
+                val s = imageProxy.imageGenerationStatus(imageId)
+                if (s.state != GenerationState.PENDING) { imageStatus = s; break }
+                Thread.sleep(50)
+            }
+            assertTrue("image status never left PENDING", imageStatus != null)
+            assertEquals(GenerationState.DONE, imageStatus!!.state)
+            assertTrue(
+                "the image URL must route to the image model and return its exact bytes",
+                imageStatus.image!!.imageBytes.contentEquals(fixedImage)
+            )
+
+            val promptProxy = client.openSandboxedConnection(promptUrl, PromptGenerationModel::class)
+            val promptId = promptProxy.requestPromptGeneration("a prompt please")
+            assertTrue("prompt id over url://", promptId.isNotEmpty())
+            var promptStatus: PromptGenerationStatus? = null
+            val promptDeadline = System.currentTimeMillis() + 20_000
+            while (System.currentTimeMillis() < promptDeadline) {
+                val s = promptProxy.promptGenerationStatus(promptId)
+                if (s.state != GenerationState.PENDING) { promptStatus = s; break }
+                Thread.sleep(50)
+            }
+            assertTrue("prompt status never left PENDING", promptStatus != null)
+            assertEquals(GenerationState.DONE, promptStatus!!.state)
+            assertEquals("the prompt URL must route to the prompt model", fixedPrompt, promptStatus.prompt)
+        }
+    )
+}
