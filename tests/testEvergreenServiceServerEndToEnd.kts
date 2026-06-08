@@ -359,6 +359,82 @@ fun testImageErrorStatusEndToEndOverUrl() {
 }
 
 /**
+ * The async contract over url://: the server reports PENDING on the first status polls and only later
+ * DONE. The sandboxed client must decode PENDING (and keep polling), then decode the eventual DONE with
+ * the correct bytes — the PENDING->DONE transition the happy-path tests skip by returning DONE at once.
+ * Also drives the single-argument `requestImageGeneration(prompt)` client overload.
+ */
+@Test
+fun testImagePendingThenDoneEndToEndOverUrl() {
+    fun loadRes(name: String): ByteArray {
+        val s = object {}.javaClass.getResourceAsStream(name)
+            ?: throw IllegalStateException("resource $name not on the test classpath")
+        return s.use { it.readBytes() }
+    }
+    val fixedImage = ByteArray(128) { (it * 5 + 3).toByte() }
+    val statusPolls = intArrayOf(0)
+    val model = object : ImageGenerationModel {
+        override fun requestImageGeneration(prompt: String, inputImages: List<ByteArray>): String {
+            return "img-pending-1"
+        }
+
+        override fun imageGenerationStatus(generationId: String): ImageGenerationStatus {
+            val n = statusPolls[0] + 1
+            statusPolls[0] = n
+            // Report PENDING for the first two polls, then DONE.
+            if (n < 3) {
+                return object : ImageGenerationStatus {
+                    override val state = GenerationState.PENDING
+                    override val image: GeneratedImage? = null
+                    override val error: String? = null
+                }
+            }
+            return object : ImageGenerationStatus {
+                override val state = GenerationState.DONE
+                override val image: GeneratedImage = object : GeneratedImage {
+                    override val imageBytes = fixedImage
+                    override val contentType = "image/png"
+                    override val url = "url://pending/$generationId"
+                }
+                override val error: String? = null
+            }
+        }
+    }
+    val handler = ImageModelRpcHandler(model, ByteArray(0), "x", ByteArray(0))
+
+    runTwoNodeServiceTest(
+        serviceId = "e2e.image.pending.${System.nanoTime()}",
+        clientJar = loadRes("/image-client-impl.jar"),
+        implClassName = "evergreenserviceserver/ImageGenerationModelClientImpl",
+        dispatch = { method, params -> handler.handleP2pRequest(method, params) },
+        exercise = { client, url ->
+            val proxy = client.openSandboxedConnection(url, ImageGenerationModel::class)
+            val generationId = proxy.requestImageGeneration("a slowly generated image")
+            assertTrue("requestImageGeneration must return a non-empty id over url://", generationId.isNotEmpty())
+
+            var status: ImageGenerationStatus? = null
+            val deadline = System.currentTimeMillis() + 20_000
+            while (System.currentTimeMillis() < deadline) {
+                val s = proxy.imageGenerationStatus(generationId)
+                if (s.state != GenerationState.PENDING) { status = s; break }
+                Thread.sleep(50)
+            }
+            assertTrue("image status never left PENDING over url://", status != null)
+            assertEquals(GenerationState.DONE, status!!.state)
+            assertTrue(
+                "the client must have observed PENDING and polled again before DONE (server saw " +
+                    "${statusPolls[0]} status polls)",
+                statusPolls[0] >= 3
+            )
+            assertTrue(
+                "the eventual DONE image must round-trip byte-for-byte after the PENDING->DONE transition",
+                status.image!!.imageBytes.contentEquals(fixedImage)
+            )
+        }
+    )
+}
+
+/**
  * A server-side generation *failure* (the model throws, not a clean ERROR status) must surface to the
  * sandboxed client as a thrown exception over url:// — it must NOT hang and must NOT masquerade as a
  * successful generation id. This is the path with only manual coverage before.

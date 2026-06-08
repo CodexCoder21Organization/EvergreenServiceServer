@@ -631,6 +631,16 @@ fun testMissingImagesParamYieldsNoInputs() {
     }
 }
 
+/** An images parameter that is neither a String nor a List (here an Int) yields no input images. */
+@Test
+fun testNonStringNonListImagesParamYieldsNoInputs() {
+    val captured = arrayOfNulls<List<ByteArray>>(1)
+    withImageHandler(ByteArray(0), "c", ByteArray(0), captured) { handler ->
+        handler.dispatch("requestImageGeneration", mapOf("prompt" to "p", "images" to 12345))
+        assertEquals(0, captured[0]!!.size)
+    }
+}
+
 /** Odd-length hex is rejected with a descriptive IllegalArgumentException naming the bad length. */
 @Test
 fun testOddLengthHexThrowsDescriptiveError() {
