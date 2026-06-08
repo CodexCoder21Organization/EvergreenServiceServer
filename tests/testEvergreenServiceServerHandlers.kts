@@ -1,5 +1,5 @@
 @file:WithArtifact("evergreenserviceserver.buildMaven()")
-@file:WithArtifact("photogenerationmanager.api:photo-generation-manager-api:0.0.3")
+@file:WithArtifact("photogenerationmanager.api:photo-generation-manager-api:0.0.4")
 @file:WithArtifact("photogenerationmanager.embedded:photo-generation-manager-embedded:0.0.7")
 @file:WithArtifact("com.squareup.okhttp3:okhttp:4.11.0")
 @file:WithArtifact("com.squareup.okio:okio-jvm:3.4.0")
@@ -516,6 +516,75 @@ fun testPromptHandleRequestWrapsExceptionInRpcError() {
         assertEquals("-1", resp.error!!.code)
         assertEquals("Missing required parameter 'prompt'. Provided parameters: []", resp.error!!.message)
     }
+}
+
+// ---- cancel dispatch --------------------------------------------------------
+
+/**
+ * cancelImageGeneration dispatch forwards the generationId to the model and returns {cancelled: <bool>}
+ * — the value the model reports. Uses an in-memory model that cancels exactly the id it is given once.
+ */
+@Test
+fun testImageCancelDispatchReturnsModelResult() {
+    val cancelledId = arrayOfNulls<String>(1)
+    val model = object : ImageGenerationModel {
+        override fun requestImageGeneration(prompt: String, inputImages: List<ByteArray>): String = "img-1"
+        override fun imageGenerationStatus(generationId: String): ImageGenerationStatus = object : ImageGenerationStatus {
+            override val state = GenerationState.PENDING
+            override val image: GeneratedImage? = null
+            override val error: String? = null
+        }
+        override fun cancelImageGeneration(generationId: String): Boolean {
+            cancelledId[0] = generationId
+            return generationId == "img-1"
+        }
+    }
+    val handler = ImageModelRpcHandler(model, ByteArray(0), "c", ByteArray(0))
+    @Suppress("UNCHECKED_CAST")
+    val cancelled = handler.dispatch("cancelImageGeneration", mapOf("generationId" to "img-1")) as Map<String, Any?>
+    assertEquals("the handler must forward the exact generation id", "img-1", cancelledId[0])
+    assertEquals("a cancellable generation reports cancelled=true", true, cancelled["cancelled"])
+    @Suppress("UNCHECKED_CAST")
+    val notCancelled = handler.dispatch("cancelImageGeneration", mapOf("generationId" to "other")) as Map<String, Any?>
+    assertEquals("an uncancellable id reports cancelled=false", false, notCancelled["cancelled"])
+}
+
+/** cancelImageGeneration without a generationId throws a descriptive IllegalArgumentException. */
+@Test
+fun testImageCancelMissingGenerationIdThrowsDescriptiveError() {
+    withImageHandler(ByteArray(0), "c", ByteArray(0), null) { handler ->
+        val e = try {
+            handler.dispatch("cancelImageGeneration", emptyMap())
+            null
+        } catch (ex: IllegalArgumentException) {
+            ex
+        }
+        assertNotNull("a missing 'generationId' must throw IllegalArgumentException", e)
+        assertEquals("Missing required parameter 'generationId'. Provided parameters: []", e!!.message)
+    }
+}
+
+/** cancelPromptGeneration dispatch forwards the generationId and returns the model's {cancelled} value. */
+@Test
+fun testPromptCancelDispatchReturnsModelResult() {
+    val cancelledId = arrayOfNulls<String>(1)
+    val model = object : PromptGenerationModel {
+        override fun requestPromptGeneration(prompt: String, inputImages: List<ByteArray>): String = "p-1"
+        override fun promptGenerationStatus(generationId: String): PromptGenerationStatus = object : PromptGenerationStatus {
+            override val state = GenerationState.PENDING
+            override val prompt: String? = null
+            override val error: String? = null
+        }
+        override fun cancelPromptGeneration(generationId: String): Boolean {
+            cancelledId[0] = generationId
+            return true
+        }
+    }
+    val handler = PromptModelRpcHandler(model, ByteArray(0), "c", ByteArray(0))
+    @Suppress("UNCHECKED_CAST")
+    val cancelled = handler.dispatch("cancelPromptGeneration", mapOf("generationId" to "p-1")) as Map<String, Any?>
+    assertEquals("p-1", cancelledId[0])
+    assertEquals(true, cancelled["cancelled"])
 }
 
 // ---- Unknown-method service descriptor --------------------------------------

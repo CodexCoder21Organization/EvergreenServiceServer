@@ -1,5 +1,5 @@
 @file:WithArtifact("evergreenserviceserver.buildMaven()")
-@file:WithArtifact("photogenerationmanager.api:photo-generation-manager-api:0.0.3")
+@file:WithArtifact("photogenerationmanager.api:photo-generation-manager-api:0.0.4")
 @file:WithArtifact("photogenerationmanager.embedded:photo-generation-manager-embedded:0.0.7")
 @file:WithArtifact("com.squareup.okhttp3:okhttp:4.11.0")
 @file:WithArtifact("com.squareup.okio:okio-jvm:3.4.0")

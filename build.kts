@@ -9,7 +9,7 @@ import build.kotlin.annotations.MavenArtifactCoordinates
 
 val dependencies = resolveDependencies2(
     // PhotoGenerationManager Api (model interfaces) + Embedded (the model implementations)
-    MavenPrebuilt2("photogenerationmanager.api:photo-generation-manager-api:0.0.3"),
+    MavenPrebuilt2("photogenerationmanager.api:photo-generation-manager-api:0.0.4"),
     MavenPrebuilt2("photogenerationmanager.embedded:photo-generation-manager-embedded:0.0.7"),
     // HTTP client used by the Embedded
     MavenPrebuilt2("com.squareup.okhttp3:okhttp:4.11.0"),
@@ -68,7 +68,7 @@ val clientDependencies by lazy {
         MavenPrebuilt2("org.jetbrains.kotlin:kotlin-stdlib:1.9.22"),
         MavenPrebuilt2("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22"),
         MavenPrebuilt2("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22"),
-        MavenPrebuilt2("photogenerationmanager.api:photo-generation-manager-api:0.0.3"),
+        MavenPrebuilt2("photogenerationmanager.api:photo-generation-manager-api:0.0.4"),
         MavenPrebuilt2("foundation.url:service-bridge-stub:0.0.1"),
     )
 }
@@ -76,6 +76,12 @@ val clientDependencies by lazy {
 @MavenArtifactCoordinates("evergreenserviceserver:evergreen-service-server:")
 fun buildMaven(): File {
     return buildSimpleKotlinMavenArtifact(
+        // 0.0.5: Enforce a server-side 5-minute generation timeout and cancellation. Each backing
+        //        model is wrapped in a TimeoutEnforcingImageModel/TimeoutEnforcingPromptModel
+        //        (Clock-driven, default SystemClock): a generation still PENDING past the deadline,
+        //        or one a consumer cancels, is reported as ERROR. New RPC method
+        //        cancelImageGeneration/cancelPromptGeneration -> {cancelled}; bumps the Api to 0.0.4
+        //        and the client jars to 0.0.3 (they gain the cancel call).
         // 0.0.1: Initial release — hosts EvergreenImageGenerationModel + EvergreenPromptGenerationModel
         //        behind url://evergreen-image-model/ and url://evergreen-prompt-model/. Image bytes
         //        cross the SJVM boundary as hex.
@@ -84,7 +90,7 @@ fun buildMaven(): File {
         // 0.0.4: Correct DEFAULT_PROMPT_MODEL_URL to the lyria_rewriter text model (the previous
         //        gemfuse_image_agent default returned images, never text); bump Embedded to 0.0.7
         //        (auto-prefixes prompts with "Expand this prompt: ").
-        coordinates = "evergreenserviceserver:evergreen-service-server:0.0.4",
+        coordinates = "evergreenserviceserver:evergreen-service-server:0.0.5",
         src = File("src"),
         compileDependencies = dependencies
     )
@@ -100,8 +106,8 @@ private fun buildClientJar(srcDir: String, coordinates: String): File {
     ).jar
 }
 
-fun buildImageClientJar(): File = buildClientJar("src-client-image", "evergreenserviceserver:evergreen-image-client:0.0.2")
-fun buildPromptClientJar(): File = buildClientJar("src-client-prompt", "evergreenserviceserver:evergreen-prompt-client:0.0.2")
+fun buildImageClientJar(): File = buildClientJar("src-client-image", "evergreenserviceserver:evergreen-image-client:0.0.3")
+fun buildPromptClientJar(): File = buildClientJar("src-client-prompt", "evergreenserviceserver:evergreen-prompt-client:0.0.3")
 
 private fun resourceJar(entryName: String, contentJar: File): File {
     val tempFile = File.createTempFile("client-resources", ".jar")
@@ -121,12 +127,12 @@ private fun buildClientResourcesJar(srcDir: String, coordinates: String, entryNa
 }
 
 /** Public wrappers so e2e tests can load the client bytecode from the classpath as a resource. */
-fun buildImageClientResourcesJar(): File = buildClientResourcesJar("src-client-image", "evergreenserviceserver:evergreen-image-client:0.0.2", "image-client-impl.jar")
-fun buildPromptClientResourcesJar(): File = buildClientResourcesJar("src-client-prompt", "evergreenserviceserver:evergreen-prompt-client:0.0.2", "prompt-client-impl.jar")
+fun buildImageClientResourcesJar(): File = buildClientResourcesJar("src-client-image", "evergreenserviceserver:evergreen-image-client:0.0.3", "image-client-impl.jar")
+fun buildPromptClientResourcesJar(): File = buildClientResourcesJar("src-client-prompt", "evergreenserviceserver:evergreen-prompt-client:0.0.3", "prompt-client-impl.jar")
 
 fun buildFatJar(): File {
     val manifest = Manifest("evergreenserviceserver.MainKt")
-    val imageResources = buildClientResourcesJar("src-client-image", "evergreenserviceserver:evergreen-image-client:0.0.2", "image-client-impl.jar")
-    val promptResources = buildClientResourcesJar("src-client-prompt", "evergreenserviceserver:evergreen-prompt-client:0.0.2", "prompt-client-impl.jar")
+    val imageResources = buildClientResourcesJar("src-client-image", "evergreenserviceserver:evergreen-image-client:0.0.3", "image-client-impl.jar")
+    val promptResources = buildClientResourcesJar("src-client-prompt", "evergreenserviceserver:evergreen-prompt-client:0.0.3", "prompt-client-impl.jar")
     return BuildJar(manifest, dependencies.map { it.jar } + buildSkinnyJar() + imageResources + promptResources)
 }
