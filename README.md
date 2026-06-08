@@ -47,7 +47,7 @@ Image bytes cross the SJVM sandbox boundary as **hex strings** (the sandbox has 
 |----------|---------|---------|
 | `EVERGREEN_SERVER_URL` | `https://192.168.86.243:9443` | Evergreen server base URL |
 | `IMAGE_MODEL_URL` | `evergreen:///mbns/el/home/courier/anxu/gemfuse_image_agent` | Evergreen image model |
-| `PROMPT_MODEL_URL` | `evergreen:///mbns/vz/home/courier/rakicevic/gemfuse_image_agent` | Evergreen text model |
+| `PROMPT_MODEL_URL` | `evergreen:///mbns/el/home/courier/lyria_rewriter/v4p1s_whitewater` | Evergreen text (prompt-rewriter) model — must return text; `mbns`/`bns` URLs need **three** slashes (`evergreen:///mbns/...`) |
 | `IMAGE_SERVICE_DOMAIN` | `evergreen-image-model` | url:// domain for the image model |
 | `PROMPT_SERVICE_DOMAIN` | `evergreen-prompt-model` | url:// domain for the prompt model |
 
