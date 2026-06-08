@@ -115,6 +115,10 @@ private fun buildClientResourcesJar(srcDir: String, coordinates: String, entryNa
     return resourceJar(entryName, fat)
 }
 
+/** Public wrappers so e2e tests can load the client bytecode from the classpath as a resource. */
+fun buildImageClientResourcesJar(): File = buildClientResourcesJar("src-client-image", "evergreenserviceserver:evergreen-image-client:0.0.2", "image-client-impl.jar")
+fun buildPromptClientResourcesJar(): File = buildClientResourcesJar("src-client-prompt", "evergreenserviceserver:evergreen-prompt-client:0.0.2", "prompt-client-impl.jar")
+
 fun buildFatJar(): File {
     val manifest = Manifest("evergreenserviceserver.MainKt")
     val imageResources = buildClientResourcesJar("src-client-image", "evergreenserviceserver:evergreen-image-client:0.0.2", "image-client-impl.jar")
