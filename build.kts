@@ -79,7 +79,9 @@ fun buildMaven(): File {
         // 0.0.1: Initial release — hosts EvergreenImageGenerationModel + EvergreenPromptGenerationModel
         //        behind url://evergreen-image-model/ and url://evergreen-prompt-model/. Image bytes
         //        cross the SJVM boundary as hex.
-        coordinates = "evergreenserviceserver:evergreen-service-server:0.0.2",
+        // 0.0.3: Extract env/resource config into a documented, testable ServerConfig API
+        //        (resolveServerConfig / loadServerResource); no behavioural change to main().
+        coordinates = "evergreenserviceserver:evergreen-service-server:0.0.3",
         src = File("src"),
         compileDependencies = dependencies
     )
