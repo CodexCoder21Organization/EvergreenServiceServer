@@ -4,7 +4,7 @@
 @file:WithArtifact("com.squareup.okhttp3:okhttp:4.11.0")
 @file:WithArtifact("com.squareup.okio:okio-jvm:3.4.0")
 @file:WithArtifact("community.kotlin.clocks.simple:community-kotlin-clocks-simple:0.0.3")
-@file:WithArtifact("foundation.url:protocol:0.0.275")
+@file:WithArtifact("foundation.url:protocol:0.0.303")
 @file:WithArtifact("org.json:json:20250517")
 @file:WithArtifact("org.jetbrains.kotlin:kotlin-stdlib:1.9.22")
 @file:WithArtifact("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22")
