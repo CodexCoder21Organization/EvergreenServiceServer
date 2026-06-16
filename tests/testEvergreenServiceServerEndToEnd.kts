@@ -4,8 +4,8 @@
 @file:WithArtifact("photogenerationmanager.api:photo-generation-manager-api:0.0.4")
 @file:WithArtifact("community.kotlin.clocks.simple:community-kotlin-clocks-simple:0.0.3")
 // UrlResolver + UrlProtocol — the exact version pair the server module is built against.
-@file:WithArtifact("foundation.url:resolver:0.0.504")
-@file:WithArtifact("foundation.url:protocol:0.0.275")
+@file:WithArtifact("foundation.url:resolver:0.0.556")
+@file:WithArtifact("foundation.url:protocol:0.0.303")
 @file:WithArtifact("community.kotlin.observable:core-jvm:0.3.4")
 // SJVM runtime + stdlib (the consumer runs the client bytecode in its own sandbox).
 @file:WithArtifact("net.javadeploy.sjvm:libSJVM-jvm:0.0.38")
