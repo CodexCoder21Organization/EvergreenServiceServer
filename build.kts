@@ -16,7 +16,7 @@ val dependencies = resolveDependencies2(
     // Clock abstraction (Embedded + UrlProtocol)
     MavenPrebuilt2("community.kotlin.clocks.simple:community-kotlin-clocks-simple:0.0.3"),
     // UrlResolver + UrlProtocol — consistent version pair (see DigitalOceanDropletServiceServer)
-    MavenPrebuilt2("foundation.url:resolver:0.0.556"),
+    MavenPrebuilt2("foundation.url:resolver:0.0.600"),
     MavenPrebuilt2("foundation.url:protocol:0.0.303"),
     MavenPrebuilt2("community.kotlin.observable:core-jvm:0.3.4"),
     // SJVM runtime + stdlib
