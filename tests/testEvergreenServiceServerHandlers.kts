@@ -1,23 +1,10 @@
 @file:WithArtifact("evergreenserviceserver.buildMaven()")
 @file:WithArtifact("photogenerationmanager.api:photo-generation-manager-api:0.0.4")
-@file:WithArtifact("photogenerationmanager.embedded:photo-generation-manager-embedded:0.0.7")
-@file:WithArtifact("com.squareup.okhttp3:okhttp:4.11.0")
-@file:WithArtifact("com.squareup.okio:okio-jvm:3.4.0")
-@file:WithArtifact("community.kotlin.clocks.simple:community-kotlin-clocks-simple:0.0.3")
 @file:WithArtifact("foundation.url:protocol:0.0.303")
 @file:WithArtifact("org.json:json:20250517")
-@file:WithArtifact("org.jetbrains.kotlin:kotlin-stdlib:1.9.22")
-@file:WithArtifact("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22")
-@file:WithArtifact("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22")
 @file:WithArtifact("junit:junit:4.13.2")
 @file:WithArtifact("org.eclipse.jetty:jetty-server:11.0.15")
-@file:WithArtifact("org.eclipse.jetty:jetty-util:11.0.15")
-@file:WithArtifact("org.eclipse.jetty:jetty-http:11.0.15")
-@file:WithArtifact("org.eclipse.jetty:jetty-io:11.0.15")
 @file:WithArtifact("jakarta.servlet:jakarta.servlet-api:5.0.0")
-@file:WithArtifact("org.bouncycastle:bcpkix-jdk18on:1.78.1")
-@file:WithArtifact("org.bouncycastle:bcprov-jdk18on:1.78.1")
-@file:WithArtifact("org.bouncycastle:bcutil-jdk18on:1.78.1")
 package evergreenserviceserver
 
 import build.kotlin.withartifact.WithArtifact
