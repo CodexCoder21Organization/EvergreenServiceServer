@@ -1,9 +1,5 @@
 @file:WithArtifact("evergreenserviceserver.buildMaven()")
 @file:WithArtifact("photogenerationmanager.api:photo-generation-manager-api:0.0.4")
-@file:WithArtifact("community.kotlin.clocks.simple:community-kotlin-clocks-simple:0.0.3")
-@file:WithArtifact("org.jetbrains.kotlin:kotlin-stdlib:1.9.22")
-@file:WithArtifact("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22")
-@file:WithArtifact("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22")
 @file:WithArtifact("junit:junit:4.13.2")
 package evergreenserviceserver
 
