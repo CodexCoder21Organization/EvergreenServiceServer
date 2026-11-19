@@ -13,8 +13,8 @@ if [ ! -f "$JAR_PATH" ]; then
     chmod +x "$COURSIER_PATH"
   fi
 
-  echo "Fetching kompile.cli:kompile-cli:0.0.94 from https://kotlin.directory/..."
-  CLASSPATH=$("$COURSIER_PATH" fetch --repository https://kotlin.directory/ --repository central kompile.cli:kompile-cli:0.0.94 --classpath)
+  echo "Fetching kompile.cli:kompile-cli:0.0.131 from https://kotlin.directory/..."
+  CLASSPATH=$("$COURSIER_PATH" fetch --repository https://kotlin.directory/ --repository central kompile.cli:kompile-cli:0.0.131 --classpath)
 
   cat > "$JAR_PATH" <<'LAUNCHER_EOF'
 #!/bin/bash
@@ -40,4 +40,4 @@ fi
 
 REPO_PATH=$(cd "$SCRIPT_PATH/.." && pwd)
 CACHE_PATH="$HOME/.aibuildcaches/$(echo "$REPO_PATH" | sed 's|/|_|g')"
-JAVA_OPTS="$JAVA_PROXY_OPTS" "$JAR_PATH" --cache-location "$CACHE_PATH" "$@"
+JAVA_OPTS="$JAVA_PROXY_OPTS" "$JAR_PATH" --cache-location "$CACHE_PATH" -w "$SCRIPT_PATH/.." "$@"
