@@ -1,0 +1,49 @@
+name: Bld - Build and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  merge_group:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  bld-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    container:
+      # Shared CI tools: https://github.com/CodexCoder21Organization/githubci-runner-docker-images
+      image: ghcr.io/codexcoder21organization/githubci-runner-docker-image-base@sha256:4f4e51241e6ab159ec3b2ad406cba03b2415f01e2d68cafed850b0a4b43499b2
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Free disk space
+        run: |
+          rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache 2>/dev/null || true
+          rm -rf /usr/local/share/boost /usr/local/share/chromium /usr/local/share/powershell /usr/local/share/vcpkg 2>/dev/null || true
+          rm -rf /usr/local/graalvm /usr/local/julia* /usr/local/sqlpackage 2>/dev/null || true
+          df -h /
+      - uses: actions/checkout@v4
+      - name: Build with kompile
+        run: |
+          scripts/build.bash --local-and-remote evergreenserviceserver.buildMaven
+      - name: Check disk after build
+        if: always()
+        run: df -h /
+      - name: Run tests
+        run: |
+          scripts/test.bash --local-and-remote --test . --log test_log_file.xml
+      - name: Upload test results and attempt history
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bld-test-results
+          path: test_log_file.xml
