@@ -1,5 +1,5 @@
 @KotlinBuildScript("https://tools.kotlin.build/")
-@file:WithArtifact("kompile:build-kotlin-jvm:0.0.23")
+@file:WithArtifact("kompile:build-kotlin-jvm:0.0.40")
 package evergreenserviceserver
 
 import build.kotlin.withartifact.WithArtifact
