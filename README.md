@@ -75,6 +75,8 @@ Pick distinct `*_SERVICE_DOMAIN` values if several people run their own Evergree
 
 ## Building & running
 
+The wrappers use kompile-cli 0.0.138 and its default bounded shared cache under `~/.aibuildcaches/v2/`. Caller cache options are forwarded unchanged.
+
 ```bash
 scripts/build.bash evergreenserviceserver.buildMaven            # server artifact
 scripts/build.bash evergreenserviceserver.buildImageClientJar   # SJVM client bytecode (image)
